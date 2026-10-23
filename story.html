@@ -509,19 +509,47 @@ const bayR=a=>4.1*(1+.12*Math.sin(3*a+.5)+.06*Math.sin(5*a+1.2));
  for(let i=0;i<10;i++){const a=i/10*Math.PI*2,L=1.25+.5*h3(i,1,1),sh=new THREE.Shape();[[0,-.17],[.5*L,-.24],[.95*L,-.12],[L,0],[.95*L,.12],[.5*L,.24],[0,.17]].forEach(([x,y],k)=>k?sh.lineTo(x,y):sh.moveTo(x,y));sh.closePath();
    const e=new THREE.ExtrudeGeometry(sh,{depth:.06,bevelEnabled:false});e.rotateX(Math.PI/2);e.rotateZ(.75+.2*h3(i,2,2));e.rotateY(-a);e.translate(A.x+Math.cos(a)*.35,.55,A.z+Math.sin(a)*.35);parts.push(e);}
  sgS.add(ink(mergeAll(parts),{thresh:18}));}
-// Merlion + water jet
-const merlionJet=(()=>{const P=[],B=V(-3.9,0,.5);
- P.push(box(.75,.5,.75,B.x,.25,B.z));
- [[0,.78,.26],[.05,1.08,.27],[.14,1.36,.25],[.25,1.6,.22]].forEach(([dx,y,r])=>P.push(sph(r,B.x+dx,y,B.z,1,1,.85,14,10)));
- const tail=new THREE.Shape();[[0,0],[-.35,.25],[-.45,.05],[-.38,-.12],[-.08,-.08]].forEach(([x,y],i)=>i?tail.lineTo(x,y):tail.moveTo(x,y));tail.closePath();
- const tg=new THREE.ExtrudeGeometry(tail,{depth:.05,bevelEnabled:false});tg.translate(B.x-.15,.62,B.z-.025);P.push(tg);
- P.push(sph(.27,B.x+.42,1.86,B.z,1,1,.9,16,12));
- const mane=new THREE.ConeGeometry(.38,.42,16,2,true);mane.rotateZ(Math.PI/2);mane.translate(B.x+.3,1.86,B.z);P.push(mane);
- sgS.add(ink(mergeAll(P),{wire:true,base:.55}));
- const N=44;const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(N*3),3));
- const pm=new THREE.Points(geo,new THREE.PointsMaterial({color:COL.blue,size:.09,transparent:true,depthWrite:false}));pm.frustumCulled=false;sgS.add(pm);
- const p0=V(B.x+.7,1.8,B.z),p1=V(B.x+2.1,.02,B.z);
- return{pm,update(t){const a=pm.geometry.attributes.position.array;for(let i=0;i<N;i++){const u=((i/N)+t*.5)%1,p=p0.clone().lerp(p1,u);p.y=lerp(p0.y,p1.y,u*u)+Math.sin(Math.PI*u)*.25;a[i*3]=p.x;a[i*3+1]=p.y;a[i*3+2]=p.z+Math.sin(i*1.7)*.03;}pm.geometry.attributes.position.needsUpdate=true;}};})();
+// Merlion: lion head and mane on a curled fish body, on a wave-carved base, spouting into the bay (faces +x)
+const merlionJet=(()=>{const B=V(-3.9,0,.5),g=new THREE.Group();g.position.copy(B);sgS.add(g);
+ const pl=jitter(clean(new THREE.CylinderGeometry(.44,.52,.36,16,2)),.025);pl.translate(0,.18,0);g.add(ink(pl,{wire:true,base:.3}));
+ {const w=[];for(let k=0;k<3;k++){const y=.07+k*.1,pts=[];for(let i=0;i<=64;i++){const a=i/64*Math.PI*2,r=.5-.025*k+.02*Math.sin(a*7+k);pts.push(V(Math.cos(a)*r,y+.018*Math.sin(a*7+k*2),Math.sin(a)*r));}poly(pts,w);}g.add(segs(w,'blue',.75));}
+ // fish body swept along a curled spine (t=0 tail tip, t=1 neck)
+ const spine=new THREE.CatmullRomCurve3([V(-.66,1.0,0),V(-.64,.66,0),V(-.48,.44,0),V(-.2,.38,0),V(.02,.58,0),V(.1,.92,0),V(.13,1.24,0),V(.14,1.36,0)]);
+ const N=56,RS=16,fr=spine.computeFrenetFrames(N,false);
+ const rad=t=>.028+.22*Math.pow(Math.min(1,t/.5),1.15)*(1-.18*Math.max(0,(t-.72)/.28));
+ const surf=(i,j)=>{const t=clamp(i/N),k=Math.min(N,Math.max(0,Math.round(i))),p=spine.getPointAt(t),a=j/RS*Math.PI*2,r=rad(t);
+   return p.clone().addScaledVector(fr.normals[k],Math.cos(a)*r).addScaledVector(fr.binormals[k],Math.sin(a)*r*.86);};
+ const pos=[],idx=[];for(let i=0;i<=N;i++)for(let j=0;j<RS;j++){const q=surf(i,j);pos.push(q.x,q.y,q.z);}
+ for(let i=0;i<N;i++)for(let j=0;j<RS;j++){const a=i*RS+j,b=i*RS+(j+1)%RS,c=a+RS,d=b+RS;idx.push(a,c,b,b,c,d);}
+ const body=new THREE.BufferGeometry();body.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));body.setIndex(idx);
+ g.add(new THREE.Mesh(body,fillMat));
+ const bl=[];for(let i=0;i<=N;i+=4){const r=[];for(let j=0;j<=RS;j++)r.push(surf(i,j));poly(r,bl);}
+ for(let j=0;j<RS;j+=2){const r=[];for(let i=0;i<=N;i++)r.push(surf(i,j));poly(r,bl);}
+ g.add(segs(bl,'ink',.8));
+ const sc=[];for(let i=10;i<N-5;i+=2.2)for(let j=0;j<RS;j+=1){const o=(Math.round(i/2.2)%2)*.5;poly([surf(i,j+o-.5),surf(i+.9,j+o-.25),surf(i+1.3,j+o),surf(i+.9,j+o+.25),surf(i,j+o+.5)],sc);}
+ g.add(segs(sc,'blue',.55));
+ // tail fin at the curled tip, plus side fins
+ const fin=(pts,depth)=>{const sh=new THREE.Shape();pts.forEach(([x,y],i)=>i?sh.lineTo(x,y):sh.moveTo(x,y));sh.closePath();const e=new THREE.ExtrudeGeometry(sh,{depth,bevelEnabled:false});e.translate(0,0,-depth/2);return e;};
+ const tf=fin([[0,0],[-.3,.26],[-.2,.12],[-.12,.34],[-.02,.16],[.1,.3],[.06,.06]],.03);tf.translate(-.66,.98,0);
+ const sf=[];for(const z of[.2,-.2]){const f=fin([[0,0],[-.22,-.06],[-.3,.08],[-.1,.08]],.02);f.rotateX(z>0?-.5:.5);f.translate(-.16,.42,z);sf.push(f);}
+ g.add(ink(mergeAll([tf,...sf]),{thresh:15}));
+ // lion head, muzzle, jaw, ears
+ const H=V(.18,1.5,0),hp=[];
+ hp.push(sph(.21,H.x,H.y,0,1.05,.95,.92,18,14),sph(.12,H.x+.19,H.y-.05,0,1.15,.8,.92,14,10),sph(.08,H.x+.18,H.y-.17,0,1.1,.5,.85,12,8));
+ for(const z of[.12,-.12])hp.push(new THREE.ConeGeometry(.045,.1,8).translate(H.x-.04,H.y+.2,z));
+ g.add(ink(mergeAll(hp),{wire:true,base:.32}));
+ const face=[];for(const z of[.1,-.1])poly(circlePts(.03,12).map(q=>V(H.x+.19,H.y+.07+q.z,z+q.x*.6)),face);
+ poly([V(H.x+.31,H.y-.1,.06),V(H.x+.33,H.y-.12,0),V(H.x+.31,H.y-.1,-.06)],face);
+ g.add(segs(face,'ink',1));
+ // mane: two rows of curled lobes sweeping back from the face
+ const mp=[];for(const[row,rr,x0,len]of[[0,.24,H.x-.04,.17],[1,.2,H.x-.16,.14]])for(let k=0;k<15;k++){const a=(-115+k*230/14)*DEG,dir=V(-.65,Math.cos(a),Math.sin(a)).normalize();
+   const c=V(x0,H.y+Math.cos(a)*rr,Math.sin(a)*rr);mp.push(cap(.045-row*.008,len*.6,c,c.clone().addScaledVector(dir,len),3,8));}
+ g.add(ink(mergeAll(mp),{thresh:30,base:.85}));
+ // water jet from the mouth into the bay
+ const NJ=56,geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(NJ*3),3));
+ const pm=new THREE.Points(geo,new THREE.PointsMaterial({color:COL.blue,size:.08,transparent:true,depthWrite:false}));pm.frustumCulled=false;g.add(pm);
+ const p0=V(H.x+.34,H.y-.11,0),p1=V(H.x+2.0,.02,0);
+ return{pm,update(t){const a=pm.geometry.attributes.position.array;for(let i=0;i<NJ;i++){const u=((i/NJ)+t*.45)%1,q=p0.clone().lerp(p1,u);q.y=lerp(p0.y,p1.y,u*u)+Math.sin(Math.PI*u)*.3;a[i*3]=q.x;a[i*3+1]=q.y;a[i*3+2]=Math.sin(i*1.7)*.025*u;}pm.geometry.attributes.position.needsUpdate=true;}};})();
 // Esplanade durians
 {const parts=[],spk=[];const ico=new THREE.IcosahedronGeometry(1,3),pa=ico.attributes.position,seen=new Set(),dirs=[];
  for(let i=0;i<pa.count;i++){const k=pa.getX(i).toFixed(3)+','+pa.getY(i).toFixed(3)+','+pa.getZ(i).toFixed(3);if(seen.has(k))continue;seen.add(k);if(pa.getY(i)>.06)dirs.push(V(pa.getX(i),pa.getY(i),pa.getZ(i)));}
@@ -603,7 +631,7 @@ tag('Core · EE (World Studies) · TOK · CAS',()=>ib.localToWorld(V(0,.25,0)),6
 tag('Singapore',gp(...C.sin),7.38,7.6,44,-30,{cls:'red',scene:'globe'});
 tag('Marina Bay Sands',sgp(4.25,7.1,.8),7.7,8.6,30,-30,{scene:'sg',face:true});
 tag('ArtScience Museum',sgp(2.3,1.6,-2.7),7.74,8.6,30,-24,{scene:'sg',face:true});
-tag('Merlion',sgp(-3.5,2.1,.5),7.78,8.6,-30,-28,{scene:'sg',face:true});
+tag('Merlion',sgp(-3.72,1.75,.5),7.78,8.6,-30,-28,{scene:'sg',face:true});
 tag('Esplanade',sgp(-1.1,.8,-5.1),7.82,8.6,-30,-26,{scene:'sg',face:true});
 tag('Singapore Flyer',sgp(4.9,3.9,-5.9),7.86,8.6,30,-24,{scene:'sg',face:true});
 tag('Gardens by the Bay',sgp(7.3,2.2,2.6),7.9,8.6,30,-20,{scene:'sg',face:true,minor:true});
